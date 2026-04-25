@@ -1,5 +1,3 @@
-"""Скрипт для клонирования и сборки libpg_query."""
-
 import subprocess
 import sys
 import os
@@ -165,7 +163,9 @@ def build():
             shell=True,
         )
         subprocess.check_call(  # noqa: S602
-            ["nmake", "/F", "Makefile.msvc", "all"], cwd=LIBPG_DIR, shell=True  # noqa: S607
+            ["nmake", "/F", "Makefile.msvc", "all"],  # noqa: S607
+            cwd=LIBPG_DIR,
+            shell=True,
         )
     else:
         subprocess.check_call(["make", "clean"], cwd=LIBPG_DIR)  # noqa: S607
@@ -174,30 +174,40 @@ def build():
 
 def link():
     """Links a dynamic library."""
+    exclude_test = [
+        "deparse",
+        "fingerprint",
+        "fingerprint_opts",
+        "is_utility_stmt",
+        "normalize",
+        "normalize_error",
+        "parse",
+        "parse_opts",
+        "parse_plpgsql",
+        "parse_protobuf",
+        "parse_protobuf_opts",
+        "simple",
+        "simple_error",
+        "simple_plpgsql",
+        "split",
+        "summary",
+        "summary_truncate",
+        "main",
+    ]
 
     if sys.platform == "win32":
         obj_files = list(LIBPG_DIR.glob("*.obj"))
-        exclude_test = [
-            "deparse.obj", "fingerprint.obj", "fingerprint_opts.obj",
-            "is_utility_stmt.obj", "normalize.obj", "normalize_error.obj",
-            "parse.obj", "parse_opts.obj", "parse_plpgsql.obj",
-            "parse_protobuf.obj", "parse_protobuf_opts.obj",
-            "simple.obj", "simple_error.obj", "simple_plpgsql.obj",
-            "split.obj", "summary.obj", "summary_truncate.obj",
+        obj_files = [
+            f for f in obj_files if not any(e == f.stem for e in exclude_test)
         ]
-        obj_files = [f for f in obj_files if f.name not in exclude_test]
     else:
         obj_files = list(LIBPG_DIR.rglob("*.o"))
-        exclude_test = [
-            "deparse.o", "fingerprint.o", "fingerprint_opts.o",
-            "is_utility_stmt.o", "normalize.o", "normalize_error.o",
-            "parse.o", "parse_opts.o", "parse_plpgsql.o",
-            "parse_protobuf.o", "parse_protobuf_opts.o",
-            "simple.o", "simple_error.o", "simple_plpgsql.o",
-            "split.o", "summary.o", "summary_truncate.o",
-            "test_parse.o", "test_deparse.o", "test_split.o",
+        obj_files = [
+            f for f in obj_files if not any(e == f.stem for e in exclude_test)
         ]
-        obj_files = [f for f in obj_files if f.name not in exclude_test]
+
+    if not obj_files:
+        raise RuntimeError("No object files found. Build failed?")
 
     if sys.platform == "win32":
         lib_name = "libpg_query.dll"
@@ -208,12 +218,7 @@ def link():
         )
 
         subprocess.check_call(  # noqa: S602
-            [
-                "link",
-                "/DLL",
-                f"/MACHINE:{machine}",
-                f"/OUT:{lib_name}",
-            ]
+            ["link", "/DLL", f"/MACHINE:{machine}", f"/OUT:{lib_name}"]
             + [str(f) for f in obj_files]
             + [f"/DEF:{def_file}"],
             cwd=LIBPG_DIR,
@@ -221,15 +226,9 @@ def link():
         )
     elif sys.platform == "darwin":
         lib_name = "libpg_query.dylib"
-        arch_flag = (
-            ["-arch", "arm64"]
-            if get_arch() == "arm64"
-            else ["-arch", "x86_64"]
-        )
+        arch = get_arch()
         subprocess.check_call(  # noqa: S603
-            ["gcc"]
-            + arch_flag
-            + ["-dynamiclib", "-o", lib_name]
+            ["gcc", "-arch", arch, "-dynamiclib", "-o", lib_name]
             + [str(f) for f in obj_files],
             cwd=LIBPG_DIR,
         )
