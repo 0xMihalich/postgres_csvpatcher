@@ -174,28 +174,30 @@ def build():
 
 def link():
     """Links a dynamic library."""
-    obj_pattern = "*.obj" if sys.platform == "win32" else "*.o"
-    obj_files = list(LIBPG_DIR.glob(obj_pattern))
-    exclude_test = [
-        "deparse.obj",
-        "fingerprint.obj",
-        "fingerprint_opts.obj",
-        "is_utility_stmt.obj",
-        "normalize.obj",
-        "normalize_error.obj",
-        "parse.obj",
-        "parse_opts.obj",
-        "parse_plpgsql.obj",
-        "parse_protobuf.obj",
-        "parse_protobuf_opts.obj",
-        "simple.obj",
-        "simple_error.obj",
-        "simple_plpgsql.obj",
-        "split.obj",
-        "summary.obj",
-        "summary_truncate.obj",
-    ]
-    obj_files = [f for f in obj_files if f.name not in exclude_test]
+
+    if sys.platform == "win32":
+        obj_files = list(LIBPG_DIR.glob("*.obj"))
+        exclude_test = [
+            "deparse.obj", "fingerprint.obj", "fingerprint_opts.obj",
+            "is_utility_stmt.obj", "normalize.obj", "normalize_error.obj",
+            "parse.obj", "parse_opts.obj", "parse_plpgsql.obj",
+            "parse_protobuf.obj", "parse_protobuf_opts.obj",
+            "simple.obj", "simple_error.obj", "simple_plpgsql.obj",
+            "split.obj", "summary.obj", "summary_truncate.obj",
+        ]
+        obj_files = [f for f in obj_files if f.name not in exclude_test]
+    else:
+        obj_files = list(LIBPG_DIR.rglob("*.o"))
+        exclude_test = [
+            "deparse.o", "fingerprint.o", "fingerprint_opts.o",
+            "is_utility_stmt.o", "normalize.o", "normalize_error.o",
+            "parse.o", "parse_opts.o", "parse_plpgsql.o",
+            "parse_protobuf.o", "parse_protobuf_opts.o",
+            "simple.o", "simple_error.o", "simple_plpgsql.o",
+            "split.o", "summary.o", "summary_truncate.o",
+            "test_parse.o", "test_deparse.o", "test_split.o",
+        ]
+        obj_files = [f for f in obj_files if f.name not in exclude_test]
 
     if sys.platform == "win32":
         lib_name = "libpg_query.dll"
