@@ -159,13 +159,11 @@ def build():
 
         subprocess.check_call(  # noqa: S602
             ["nmake", "/F", "Makefile.msvc", "clean"],  # noqa: S607
-            cwd=LIBPG_DIR,
-            shell=True,
+            cwd=LIBPG_DIR, shell=True,
         )
         subprocess.check_call(  # noqa: S602
             ["nmake", "/F", "Makefile.msvc", "all"],  # noqa: S607
-            cwd=LIBPG_DIR,
-            shell=True,
+            cwd=LIBPG_DIR, shell=True,
         )
     else:
         subprocess.check_call(["make", "clean"], cwd=LIBPG_DIR)  # noqa: S607
@@ -174,29 +172,16 @@ def build():
 
 def link():
     """Links a dynamic library."""
-    exclude_test = [
-        "deparse",
-        "fingerprint",
-        "fingerprint_opts",
-        "is_utility_stmt",
-        "normalize",
-        "normalize_error",
-        "parse",
-        "parse_opts",
-        "parse_plpgsql",
-        "parse_protobuf",
-        "parse_protobuf_opts",
-        "simple",
-        "simple_error",
-        "simple_plpgsql",
-        "split",
-        "summary",
-        "summary_truncate",
-        "main",
-    ]
-
     if sys.platform == "win32":
         obj_files = list(LIBPG_DIR.glob("*.obj"))
+        exclude_test = [
+            "deparse", "fingerprint", "fingerprint_opts",
+            "is_utility_stmt", "normalize", "normalize_error",
+            "parse", "parse_opts", "parse_plpgsql",
+            "parse_protobuf", "parse_protobuf_opts",
+            "simple", "simple_error", "simple_plpgsql",
+            "split", "summary", "summary_truncate", "main",
+        ]
         obj_files = [
             f for f in obj_files if not any(e == f.stem for e in exclude_test)
         ]
@@ -215,18 +200,27 @@ def link():
             ["link", "/DLL", f"/MACHINE:{machine}", f"/OUT:{lib_name}"]
             + [str(f) for f in obj_files]
             + [f"/DEF:{def_file}"],
-            cwd=LIBPG_DIR,
-            shell=True,
+            cwd=LIBPG_DIR, shell=True,
         )
 
         return LIBPG_DIR / lib_name
 
     else:
-        # Linux/macOS: собираем статическую библиотеку, затем динамическую
-        obj_files = list(LIBPG_DIR.rglob("*.o"))
-        obj_files = [
-            f for f in obj_files if not any(e == f.stem for e in exclude_test)
-        ]
+        # Linux/macOS: ищем ВСЕ .o файлы рекурсивно, исключая тесты
+        obj_files = []
+        for f in LIBPG_DIR.rglob("*.o"):
+            # Пропускаем файлы из examples/ и test/ директорий
+            if "examples" in f.parts or "test" in f.parts:
+                continue
+            # Пропускаем файлы с main (тесты)
+            if f.stem in ("main", "deparse", "fingerprint", "fingerprint_opts",
+                         "is_utility_stmt", "normalize", "normalize_error",
+                         "parse", "parse_opts", "parse_plpgsql",
+                         "parse_protobuf", "parse_protobuf_opts",
+                         "simple", "simple_error", "simple_plpgsql",
+                         "split", "summary", "summary_truncate"):
+                continue
+            obj_files.append(f)
 
         if not obj_files:
             raise RuntimeError("No object files found. Build failed?")
@@ -243,21 +237,18 @@ def link():
             lib_name = "libpg_query.dylib"
             arch = get_arch()
             subprocess.check_call(  # noqa: S603
-                [  # noqa: S607
-                    "gcc",
-                    "-arch",
-                    arch,
-                    "-dynamiclib",
-                    "-o",
-                    lib_name,
-                    str(static_lib),
-                ],
+                ["gcc", "-arch", arch, "-dynamiclib",  # noqa: S607
+                 "-o", lib_name, str(static_lib)],
                 cwd=LIBPG_DIR,
             )
         else:
             lib_name = "libpg_query.so"
+            # -Wl,--whole-archive заставляет линковщика включить все символы
             subprocess.check_call(  # noqa: S603
-                ["gcc", "-shared", "-fPIC", "-o", lib_name, str(static_lib)],  # noqa: S607
+                ["gcc", "-shared", "-fPIC",  # noqa: S607
+                 "-Wl,--whole-archive", str(static_lib),
+                 "-Wl,--no-whole-archive",
+                 "-o", lib_name],
                 cwd=LIBPG_DIR,
             )
 
