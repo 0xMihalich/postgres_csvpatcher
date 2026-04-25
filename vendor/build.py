@@ -38,7 +38,7 @@ def get_machine():
 def setup_env():
     """Configures the build environment."""
     if sys.platform == "win32":
-        arch = get_arch()  # "x64" или "x86"
+        arch = get_arch()
         vs_path = None
         vswhere = Path(
             "C:/Program Files (x86)/Microsoft Visual "
@@ -141,9 +141,9 @@ def clone():
             ["git", "clone", "-b", BRANCH, REPO, str(LIBPG_DIR)]  # noqa: S607
         )
     else:
-        subprocess.check_call(["git", "fetch", "--tags"], cwd=LIBPG_DIR)  # noqa: S603, S607
-        subprocess.check_call(["git", "checkout", BRANCH], cwd=LIBPG_DIR)  # noqa: S603, S607
-        subprocess.check_call(["git", "pull", "origin", BRANCH], cwd=LIBPG_DIR)  # noqa: S603, S607
+        subprocess.check_call(["git", "fetch", "--tags"], cwd=LIBPG_DIR)  # noqa: S607
+        subprocess.check_call(["git", "checkout", BRANCH], cwd=LIBPG_DIR)  # noqa: S607, S603
+        subprocess.check_call(["git", "pull", "origin", BRANCH], cwd=LIBPG_DIR)  # noqa: S607, S603
 
 
 def build():
@@ -200,16 +200,10 @@ def link():
         obj_files = [
             f for f in obj_files if not any(e == f.stem for e in exclude_test)
         ]
-    else:
-        obj_files = list(LIBPG_DIR.rglob("*.o"))
-        obj_files = [
-            f for f in obj_files if not any(e == f.stem for e in exclude_test)
-        ]
 
-    if not obj_files:
-        raise RuntimeError("No object files found. Build failed?")
+        if not obj_files:
+            raise RuntimeError("No object files found. Build failed?")
 
-    if sys.platform == "win32":
         lib_name = "libpg_query.dll"
         machine = get_machine()
         def_file = LIBPG_DIR / "pg_query.def"
@@ -224,23 +218,50 @@ def link():
             cwd=LIBPG_DIR,
             shell=True,
         )
-    elif sys.platform == "darwin":
-        lib_name = "libpg_query.dylib"
-        arch = get_arch()
+
+        return LIBPG_DIR / lib_name
+
+    else:
+        # Linux/macOS: собираем статическую библиотеку, затем динамическую
+        obj_files = list(LIBPG_DIR.rglob("*.o"))
+        obj_files = [
+            f for f in obj_files if not any(e == f.stem for e in exclude_test)
+        ]
+
+        if not obj_files:
+            raise RuntimeError("No object files found. Build failed?")
+
+        # Создаём статическую библиотеку
+        static_lib = LIBPG_DIR / "libpg_query.a"
         subprocess.check_call(  # noqa: S603
-            ["gcc", "-arch", arch, "-dynamiclib", "-o", lib_name]
-            + [str(f) for f in obj_files],
-            cwd=LIBPG_DIR,
-        )
-    else:  # Linux
-        lib_name = "libpg_query.so"
-        subprocess.check_call(  # noqa: S603
-            ["gcc", "-shared", "-fPIC", "-o", lib_name]
-            + [str(f) for f in obj_files],
+            ["ar", "rcs", str(static_lib)] + [str(f) for f in obj_files],
             cwd=LIBPG_DIR,
         )
 
-    return LIBPG_DIR / lib_name
+        # Линкуем динамическую библиотеку из статической
+        if sys.platform == "darwin":
+            lib_name = "libpg_query.dylib"
+            arch = get_arch()
+            subprocess.check_call(  # noqa: S603
+                [  # noqa: S607
+                    "gcc",
+                    "-arch",
+                    arch,
+                    "-dynamiclib",
+                    "-o",
+                    lib_name,
+                    str(static_lib),
+                ],
+                cwd=LIBPG_DIR,
+            )
+        else:
+            lib_name = "libpg_query.so"
+            subprocess.check_call(  # noqa: S603
+                ["gcc", "-shared", "-fPIC", "-o", lib_name, str(static_lib)],  # noqa: S607
+                cwd=LIBPG_DIR,
+            )
+
+        return LIBPG_DIR / lib_name
 
 
 def copy_to_core(lib_path):
