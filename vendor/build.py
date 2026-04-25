@@ -158,40 +158,19 @@ def build():
             print("Download: https://visualstudio.microsoft.com/ru/downloads/")
             sys.exit(1)
 
-        subprocess.check_call(  # noqa: S602
-            ["nmake", "/F", "Makefile.msvc", "clean"],  # noqa: S607
+        subprocess.check_call(
+            ["nmake", "/F", "Makefile.msvc", "clean"],
             cwd=LIBPG_DIR,
             shell=True,
         )
-        subprocess.check_call(  # noqa: S602
-            ["nmake", "/F", "Makefile.msvc", "all"],  # noqa: S607
+        subprocess.check_call(
+            ["nmake", "/F", "Makefile.msvc", "all"],
             cwd=LIBPG_DIR,
             shell=True,
         )
     else:
-        subprocess.check_call(["make", "clean"], cwd=LIBPG_DIR)  # noqa: S607
-        include_paths = [
-            "-I.",
-            "-Isrc/postgres/include",
-            "-Isrc/include",
-            "-Isrc/postgres/include/port/win32",
-            "-Ivendor",
-            "-Iprotobuf",
-        ]
-        c_files = []
-
-        for cf in LIBPG_DIR.rglob("*.c"):
-            if "examples" in cf.parts or "test" in cf.parts:
-                continue
-            c_files.append(cf.relative_to(LIBPG_DIR))
-
-        for cf in c_files:
-            obj = cf.with_suffix(".o")
-            subprocess.check_call(  # noqa: S603
-                ["gcc", "-c", "-fPIC"] + include_paths +
-                ["-o", str(obj), str(cf)],
-                cwd=LIBPG_DIR,
-            )
+        subprocess.check_call(["make", "clean"], cwd=LIBPG_DIR)
+        subprocess.check_call(["make", "build"], cwd=LIBPG_DIR)
 
 
 def link():
@@ -232,7 +211,7 @@ def link():
             "EXPORTS\npg_query_parse\npg_query_free_parse_result\n"
         )
 
-        subprocess.check_call(  # noqa: S602
+        subprocess.check_call(
             ["link", "/DLL", f"/MACHINE:{machine}", f"/OUT:{lib_name}"]
             + [str(f) for f in obj_files]
             + [f"/DEF:{def_file}"],
@@ -243,38 +222,36 @@ def link():
         return LIBPG_DIR / lib_name
 
     else:
-        # Linux/macOS: используем статическую библиотеку
+        # Linux/macOS: make build создала libpg_query.a
         static_lib = LIBPG_DIR / "libpg_query.a"
         if not static_lib.exists():
             raise RuntimeError(f"Static library not found: {static_lib}")
 
         if sys.platform == "darwin":
             lib_name = "libpg_query.dylib"
-            arch = get_arch()
-            subprocess.check_call(  # noqa: S603
-                [  # noqa: S607
+            subprocess.check_call(
+                [
                     "gcc",
-                    "-arch",
-                    arch,
                     "-dynamiclib",
-                    "-Wl,-force_load," + str(static_lib),
                     "-o",
                     lib_name,
+                    "-Wl,-all_load",
+                    str(static_lib),
                 ],
                 cwd=LIBPG_DIR,
             )
         else:
             lib_name = "libpg_query.so"
-            subprocess.check_call(  # noqa: S603
-                [  # noqa: S607
+            subprocess.check_call(
+                [
                     "gcc",
                     "-shared",
                     "-fPIC",
+                    "-o",
+                    lib_name,
                     "-Wl,--whole-archive",
                     str(static_lib),
                     "-Wl,--no-whole-archive",
-                    "-o",
-                    lib_name,
                 ],
                 cwd=LIBPG_DIR,
             )
