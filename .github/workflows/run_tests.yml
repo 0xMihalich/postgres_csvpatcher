@@ -12,7 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     runs-on: ${{ matrix.os }}
 
@@ -35,7 +35,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install pytest
 
-    - name: Build and install package
+    - name: Build native library
+      run: python vendor/build.py
+
+    - name: Install package
       run: pip install -e .
 
     - name: Test with pytest
