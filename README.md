@@ -1,6 +1,6 @@
 # Postgres CSV Patcher
 
-A tool for patching `timestamp`/`timestamptz` columns to `::timestamp(0)` precision in CSV dump queries. Uses native `libpg_query` PostgreSQL parser via `ctypes` for precise AST analysis.
+A tool for patching `timestamp`/`timestamptz` columns to `::timestamp(0)` precision in CSV dump queries. Uses `pglast` (PostgreSQL parser via `libpg_query`) for precise AST analysis.
 
 ## Why?
 
@@ -8,13 +8,12 @@ When dumping data to CSV for systems like ClickHouse, `timestamp` values with mi
 
 ## Features
 
-- **Native PostgreSQL parser** — uses `libpg_query` directly, no Python wrappers
-- **Cross-platform** — Windows (x86/x64), macOS (x86_64/arm64), Linux
+- **Pure Python** — no compilation required, uses `pglast` for parsing
+- **Cross-platform** — Windows, macOS (x86_64/arm64), Linux
 - **Precise column detection** — handles column aliases, table prefixes, quoted identifiers
 - **Complex expressions** — functions (`now()`, `date_trunc(...)`), expressions (`created_at + interval`), `CURRENT_TIMESTAMP`
 - **Wildcard expansion** — `SELECT *`, `table.*`
 - **Multiquery support** — processes the last `SELECT` in multi-statement queries
-- **Zero dependencies** — only Python stdlib and `libpg_query` (auto-built on install)
 
 ## Installation
 
@@ -22,18 +21,10 @@ When dumping data to CSV for systems like ClickHouse, `timestamp` values with mi
 pip install postgres-csvpatcher
 ```
 
-The package automatically clones and builds `libpg_query` during installation.
-
-### Requirements
-
-- **Windows:** Visual Studio 2022 with C++ tools
-- **macOS:** Xcode Command Line Tools (`xcode-select --install`)
-- **Linux:** `gcc`, `make`
-
 ## Usage
 
 ```python
-from . import patch_csv_timestamp
+from postgres_csvpatcher import patch_csv_timestamp
 
 # Columns dict: {column_name: data_type}
 columns = {
@@ -64,13 +55,7 @@ print(patched)
 # Build query from table name only (no query provided)
 patched, table = patch_csv_timestamp(None, "users", columns)
 print(patched)
-# SELECT
-#     "id"
-#   , "name"
-#   , "created_at"::timestamp(0)
-#   , "updated_at"::timestamp(0)
-# FROM
-#     users
+# SELECT "id", "name", "created_at"::timestamp(0), "updated_at"::timestamp(0) FROM users
 ```
 
 ## API
@@ -95,7 +80,7 @@ def patch_csv_timestamp(
 
 ## How It Works
 
-1. Parses SQL via native `libpg_query` → JSON AST
+1. Parses SQL via `pglast` (libpg_query) → JSON AST
 2. Finds the last `SELECT` statement (final output for multiquery)
 3. Detects `timestamp`/`timestamptz` columns from metadata
 4. For each timestamp column:
@@ -138,8 +123,6 @@ class ResClass(str, Enum):
     SQLVALUE = "SQLValueFunction"  # SQL value function (e.g., CURRENT_TIMESTAMP)
 ```
 
-Enum mapping AST node types to readable names. Used by `__column_class()` to determine how to handle each `ResTarget` in the `SELECT` clause.
-
 | Value | AST Node | Example |
 |-------|----------|---------|
 | `CAST` | `TypeCast` | `'2025-01-01'::timestamptz` |
@@ -149,7 +132,7 @@ Enum mapping AST node types to readable names. Used by `__column_class()` to det
 | `FUNC` | `FuncCall` | `now()`, `date_trunc(...)` |
 | `SQLVALUE` | `SQLValueFunction` | `CURRENT_TIMESTAMP` |
 
-### Error — Exception Classes
+### Errors — Exception Classes
 
 ```python
 class CSVPatcherError(Exception):
@@ -164,53 +147,9 @@ class CSVPatcherTypeError(CSVPatcherError, TypeError):
 
 | Exception | Base Classes | Raised When |
 |-----------|-------------|-------------|
-| `Error.CSVPatcherError` | `Exception` | Base class for all patcher errors |
-| `Error.CSVPatcherValueError` | `CSVPatcherError`, `ValueError` | Invalid input values (empty query + table, mismatched columns) |
-| `Error.CSVPatcherTypeError` | `CSVPatcherError`, `TypeError` | Wrong type for `columns` parameter |
-
-### PgQuery — Native Parser Wrapper
-
-```python
-from ctypes import Structure, CDLL, c_char_p
-
-class PgQueryParseResult(Structure):
-    _fields_ = [
-        ("parse_tree", c_char_p),    # JSON string with AST
-        ("error_message", c_char_p), # Error message (NULL on success)
-    ]
-
-class PgQuery:
-    def __init__(self):
-        # Loads native library: libpg_query.dll/.dylib/.so
-        ...
-
-    def parse(self, query: str) -> PgQueryParseResult:
-        # Parses SQL to JSON AST via libpg_query
-        ...
-
-    def free(self, result: PgQueryParseResult) -> None:
-        # Frees memory allocated by libpg_query
-        ...
-
-    def query_stmts(self, query: str) -> list[dict[str, str | int]]:
-        # Parses SQL and returns list of statements (stmts)
-        ...
-```
-
-`PgQueryParseResult` mirrors the C struct from `libpg_query`:
-
-| Field | C Type | Python Type | Description |
-|-------|--------|-------------|-------------|
-| `parse_tree` | `char*` | `bytes` | JSON string with parsed AST |
-| `error_message` | `char*` | `bytes` | Error message or `NULL` |
-
-`PgQuery` handles cross-platform library loading:
-
-| Platform | Library Name |
-|----------|-------------|
-| Windows | `libpg_query.dll` |
-| macOS | `libpg_query.dylib` |
-| Linux | `libpg_query.so` |
+| `CSVPatcherError` | `Exception` | Base class for all patcher errors |
+| `CSVPatcherValueError` | `CSVPatcherError`, `ValueError` | Invalid input values (empty query + table, mismatched columns) |
+| `CSVPatcherTypeError` | `CSVPatcherError`, `TypeError` | Wrong type for `columns` parameter |
 
 ## License
 
