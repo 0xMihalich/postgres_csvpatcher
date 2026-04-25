@@ -1,0 +1,6 @@
+include CHANGELOG.md
+include README.md
+include LICENSE
+
+exclude vendor/setup_libpg_query.py
+recursive-include src/postgres_csvpatcher/core *.dll *.dylib *.so
