@@ -222,6 +222,7 @@ def link():
         return LIBPG_DIR / lib_name
 
     else:
+        # Linux/macOS: используем статическую библиотеку
         static_lib = LIBPG_DIR / "libpg_query.a"
         if not static_lib.exists():
             raise RuntimeError(f"Static library not found: {static_lib}")
@@ -235,9 +236,9 @@ def link():
                     "-arch",
                     arch,
                     "-dynamiclib",
+                    "-Wl,-force_load," + str(static_lib),
                     "-o",
                     lib_name,
-                    str(static_lib),
                 ],
                 cwd=LIBPG_DIR,
             )
