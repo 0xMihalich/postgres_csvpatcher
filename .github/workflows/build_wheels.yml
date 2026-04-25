@@ -9,62 +9,72 @@ permissions:
   contents: write
 
 jobs:
-  build_wheels:
-    name: Build wheels on ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        
-    runs-on: ${{ matrix.os }}
-
+  build_universal:
+    name: Build Universal Wheel
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v4
       with:
         python-version: '3.11'
 
-    - name: Install cibuildwheel
-      run: pip install cibuildwheel
+    - name: Install build tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install build
 
-    - name: Build wheels
-      run: python -m cibuildwheel --output-dir wheelhouse
-      env:
-        CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
-        CIBW_SKIP: "*-musllinux*"
-        CIBW_ARCHS_LINUX: "x86_64"
-        CIBW_ARCHS_MACOS: "x86_64 arm64"
-        CIBW_ARCHS_WINDOWS: "AMD64"
+    - name: Build universal wheel
+      run: python -m build --wheel --outdir wheel_prebuild
 
-    - name: Upload wheels
+    - name: Upload universal wheels
       uses: actions/upload-artifact@v4
       with:
-        name: wheels-${{ matrix.os }}
-        path: wheelhouse/*.whl
+        name: universal-wheels
+        path: wheel_prebuild/*py3-none-any.whl
 
   create_release:
-    name: Create Release
+    name: Create Release with wheels
     runs-on: ubuntu-latest
-    needs: build_wheels
+    needs: build_universal
     if: startsWith(github.ref, 'refs/tags/')
     
     steps:
-    - name: Download all wheels
+    - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
         path: release_wheels
-        pattern: wheels-*
-        merge-multiple: true
 
-    - name: List wheels
+    - name: List all wheels
       run: find release_wheels -name "*.whl" | sort
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        files: release_wheels/*.whl
+        files: release_wheels/**/*.whl
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  upload_pypi:
+    name: Upload to PyPI
+    needs: [build_universal]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-wheels"
+          path: dist
+          merge-multiple: true
+      
+      - name: List files for debugging
+        run: find dist -name "*.whl" | sort
+      
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
