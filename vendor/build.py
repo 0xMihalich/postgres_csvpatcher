@@ -170,6 +170,14 @@ def build():
         )
     else:
         subprocess.check_call(["make", "clean"], cwd=LIBPG_DIR)  # noqa: S607
+        include_paths = [
+            "-I.",
+            "-Isrc/postgres/include",
+            "-Isrc/include",
+            "-Isrc/postgres/include/port/win32",
+            "-Ivendor",
+            "-Iprotobuf",
+        ]
         c_files = []
 
         for cf in LIBPG_DIR.rglob("*.c"):
@@ -180,10 +188,11 @@ def build():
         for cf in c_files:
             obj = cf.with_suffix(".o")
             subprocess.check_call(  # noqa: S603
-                ["gcc", "-c", "-fPIC", "-I.", "-Isrc/postgres/include",  # noqa: S607
-                 "-o", str(obj), str(cf)],
+                ["gcc", "-c", "-fPIC"] + include_paths +
+                ["-o", str(obj), str(cf)],
                 cwd=LIBPG_DIR,
             )
+
 
 def link():
     """Links a dynamic library."""
