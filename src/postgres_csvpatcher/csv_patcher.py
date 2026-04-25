@@ -1,14 +1,13 @@
 from io import StringIO
+from json import loads
+
+from pglast.parser import parse_sql_json
 
 from .common import (
     Error,
     ResClass,
     TIMESTAMP,
 )
-from .core import PgQuery
-
-
-_pg_query = PgQuery()
 
 
 def __column_fields(
@@ -245,7 +244,7 @@ def patch_csv_timestamp(
         return f"SELECT {column_list} FROM {table}", table
 
     patched_query = StringIO()
-    stmts = _pg_query.query_stmts(query)
+    stmts = loads(parse_sql_json(query))["stmts"]
     select = __current_select(stmts)
     column_list = list(columns)
 
