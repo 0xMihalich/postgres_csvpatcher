@@ -222,36 +222,38 @@ def link():
         return LIBPG_DIR / lib_name
 
     else:
-        # Linux/macOS: make build создала libpg_query.a
         static_lib = LIBPG_DIR / "libpg_query.a"
         if not static_lib.exists():
             raise RuntimeError(f"Static library not found: {static_lib}")
 
         if sys.platform == "darwin":
             lib_name = "libpg_query.dylib"
+            # Правильный способ создать динамическую библиотеку из статической
+            # с использованием флага -bundle для "модулей" (плагинов)
             subprocess.check_call(
                 [
                     "gcc",
-                    "-dynamiclib",
-                    "-o",
-                    lib_name,
+                    "-bundle",
+                    "-flat_namespace",
                     "-Wl,-all_load",
                     str(static_lib),
+                    "-o",
+                    lib_name,
                 ],
                 cwd=LIBPG_DIR,
             )
-        else:
+        else:  # Linux
             lib_name = "libpg_query.so"
             subprocess.check_call(
                 [
                     "gcc",
                     "-shared",
                     "-fPIC",
-                    "-o",
-                    lib_name,
                     "-Wl,--whole-archive",
                     str(static_lib),
                     "-Wl,--no-whole-archive",
+                    "-o",
+                    lib_name,
                 ],
                 cwd=LIBPG_DIR,
             )
